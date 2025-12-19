@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 import numpy as np
 from typing import Dict, List, Tuple
 import streamlit.components.v1 as components
+import hashlib
 
 
 # --- CONFIG & ASSETS ---
@@ -15,6 +16,76 @@ st.set_page_config(
    layout="wide",
    initial_sidebar_state="collapsed"
 )
+
+# --- PASSWORD PROTECTION ---
+def check_password():
+    """Returns `True` if the user has entered the correct password."""
+
+    def password_entered():
+        """Checks whether a password entered by the user is correct."""
+        # Get the password from secrets
+        if "dashboard_password" in st.secrets:
+            correct_password = st.secrets["dashboard_password"]
+        else:
+            # Fallback password if not in secrets (for local testing)
+            correct_password = "zeofill2024"
+
+        if st.session_state["password"] == correct_password:
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # Don't store password
+        else:
+            st.session_state["password_correct"] = False
+
+    # Return True if password is already validated
+    if st.session_state.get("password_correct", False):
+        return True
+
+    # Show login form
+    st.markdown("""
+        <style>
+        .login-container {
+            max-width: 400px;
+            margin: 100px auto;
+            padding: 40px;
+            background: rgba(30, 41, 59, 0.7);
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            text-align: center;
+        }
+        .login-title {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #2DD4BF;
+            margin-bottom: 10px;
+        }
+        .login-subtitle {
+            color: #9CA3AF;
+            margin-bottom: 30px;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown('<div class="login-container">', unsafe_allow_html=True)
+        st.markdown('<div class="login-title">🔒 ZeoFill Analytics</div>', unsafe_allow_html=True)
+        st.markdown('<div class="login-subtitle">Enter password to access dashboard</div>', unsafe_allow_html=True)
+
+        st.text_input(
+            "Password",
+            type="password",
+            on_change=password_entered,
+            key="password",
+            label_visibility="collapsed",
+            placeholder="Enter password"
+        )
+
+        if "password_correct" in st.session_state and not st.session_state["password_correct"]:
+            st.error("😕 Incorrect password. Please try again.")
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    return False
 
 # Import Supabase integration
 try:
@@ -681,6 +752,10 @@ def chart_net_profit_trend(df):
 
 # --- MAIN LAYOUT ---
 def main():
+   # Check password first
+   if not check_password():
+       st.stop()  # Stop execution if password is incorrect
+
    load_css()
 
    # Clear Streamlit cache on first load to ensure fresh data from Supabase
