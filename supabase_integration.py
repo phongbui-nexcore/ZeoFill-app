@@ -353,7 +353,7 @@ def transform_amazon_data(df: pd.DataFrame) -> pd.DataFrame:
     return transformed
 
 
-@st.cache_data(ttl=300, show_spinner=False)  # Cache for 5 minutes
+@st.cache_data(ttl=300)  # Cache for 5 minutes
 def fetch_shopify_data() -> pd.DataFrame:
     """
     Fetch Shopify data from Supabase.
@@ -404,7 +404,7 @@ def fetch_shopify_data() -> pd.DataFrame:
         return None
 
 
-@st.cache_data(ttl=300, show_spinner=False)  # Cache for 5 minutes
+@st.cache_data(ttl=300)  # Cache for 5 minutes
 def fetch_walmart_data() -> pd.DataFrame:
     """
     Fetch Walmart data from Supabase.
@@ -455,7 +455,7 @@ def fetch_walmart_data() -> pd.DataFrame:
         return None
 
 
-@st.cache_data(ttl=300, show_spinner=False)  # Cache for 5 minutes
+@st.cache_data(ttl=300)  # Cache for 5 minutes
 def fetch_amazon_data() -> pd.DataFrame:
     """
     Fetch Amazon data from Supabase.
