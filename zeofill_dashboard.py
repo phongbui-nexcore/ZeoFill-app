@@ -1244,15 +1244,15 @@ def main():
 
        if total_unfulfilled > 0:
            # Prepare table data with new columns
-           # Check which columns are available and build the list dynamically
-           base_columns = ['date', 'channel', 'order_id', 'products', 'state', 'revenue', 'financial_status']
-           optional_columns = ['customer_name', 'shipping_address', 'shipping_city', 'shipping_zipcode']
+           # Build column order: Date, Channel, Order ID, Customer Name, Address, City, Zip, State, Product, Value, Status
+           desired_order = [
+               'date', 'channel', 'order_id', 'customer_name',
+               'shipping_address', 'shipping_city', 'shipping_zipcode', 'state',
+               'products', 'revenue', 'financial_status'
+           ]
 
-           # Only include optional columns if they exist in the dataframe
-           available_columns = base_columns.copy()
-           for col in optional_columns:
-               if col in df_unfulfilled.columns:
-                   available_columns.insert(available_columns.index('products'), col)
+           # Only include columns that exist in the dataframe
+           available_columns = [col for col in desired_order if col in df_unfulfilled.columns]
 
            table_data = df_unfulfilled[available_columns].copy()
            table_data['date'] = table_data['date'].dt.strftime('%Y-%m-%d')
@@ -1263,23 +1263,19 @@ def main():
                'date': 'Order Date',
                'channel': 'Channel',
                'order_id': 'Order ID',
-               'products': 'Product',
+               'customer_name': 'Customer Name',
+               'shipping_address': 'Shipping Address',
+               'shipping_city': 'City',
+               'shipping_zipcode': 'Zip Code',
                'state': 'State',
+               'products': 'Product',
                'revenue': 'Value',
                'financial_status': 'Status'
            }
 
-           # Add optional column renames if they exist
-           if 'customer_name' in table_data.columns:
-               rename_dict['customer_name'] = 'Customer Name'
-           if 'shipping_address' in table_data.columns:
-               rename_dict['shipping_address'] = 'Shipping Address'
-           if 'shipping_city' in table_data.columns:
-               rename_dict['shipping_city'] = 'City'
-           if 'shipping_zipcode' in table_data.columns:
-               rename_dict['shipping_zipcode'] = 'Zip Code'
-
-           table_data = table_data.rename(columns=rename_dict)
+           # Only rename columns that exist in the dataframe
+           rename_dict_filtered = {k: v for k, v in rename_dict.items() if k in table_data.columns}
+           table_data = table_data.rename(columns=rename_dict_filtered)
 
            # Display with styling
            st.dataframe(
