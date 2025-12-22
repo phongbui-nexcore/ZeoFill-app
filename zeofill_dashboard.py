@@ -1244,22 +1244,42 @@ def main():
 
        if total_unfulfilled > 0:
            # Prepare table data with new columns
-           table_data = df_unfulfilled[['date', 'channel', 'order_id', 'customer_name', 'products', 'state', 'shipping_address', 'shipping_city', 'shipping_zipcode', 'revenue', 'financial_status']].copy()
+           # Check which columns are available and build the list dynamically
+           base_columns = ['date', 'channel', 'order_id', 'products', 'state', 'revenue', 'financial_status']
+           optional_columns = ['customer_name', 'shipping_address', 'shipping_city', 'shipping_zipcode']
+
+           # Only include optional columns if they exist in the dataframe
+           available_columns = base_columns.copy()
+           for col in optional_columns:
+               if col in df_unfulfilled.columns:
+                   available_columns.insert(available_columns.index('products'), col)
+
+           table_data = df_unfulfilled[available_columns].copy()
            table_data['date'] = table_data['date'].dt.strftime('%Y-%m-%d')
            table_data = table_data.sort_values('date', ascending=False)
-           table_data = table_data.rename(columns={
+
+           # Build rename dictionary based on available columns
+           rename_dict = {
                'date': 'Order Date',
                'channel': 'Channel',
                'order_id': 'Order ID',
-               'customer_name': 'Customer Name',
                'products': 'Product',
                'state': 'State',
-               'shipping_address': 'Shipping Address',
-               'shipping_city': 'City',
-               'shipping_zipcode': 'Zip Code',
                'revenue': 'Value',
                'financial_status': 'Status'
-           })
+           }
+
+           # Add optional column renames if they exist
+           if 'customer_name' in table_data.columns:
+               rename_dict['customer_name'] = 'Customer Name'
+           if 'shipping_address' in table_data.columns:
+               rename_dict['shipping_address'] = 'Shipping Address'
+           if 'shipping_city' in table_data.columns:
+               rename_dict['shipping_city'] = 'City'
+           if 'shipping_zipcode' in table_data.columns:
+               rename_dict['shipping_zipcode'] = 'Zip Code'
+
+           table_data = table_data.rename(columns=rename_dict)
 
            # Display with styling
            st.dataframe(
