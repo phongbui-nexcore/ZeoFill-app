@@ -116,8 +116,11 @@ def transform_shopify_walmart_data(df: pd.DataFrame, channel: str) -> pd.DataFra
     # Map date column
     transformed['date'] = pd.to_datetime(df['created_at'], errors='coerce')
 
-    # Map order_id
-    transformed['order_id'] = df['order_id'].astype(str).str.strip()
+    # Map order_id - use order_number for Shopify if available, otherwise use order_id
+    if 'order_number' in df.columns and channel == 'Shopify':
+        transformed['order_id'] = df['order_number'].astype(str).str.strip()
+    else:
+        transformed['order_id'] = df['order_id'].astype(str).str.strip()
 
     # Map revenue - use line_total (revenue per line item)
     transformed['revenue'] = pd.to_numeric(df['line_total'], errors='coerce')
