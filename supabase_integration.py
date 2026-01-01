@@ -125,8 +125,17 @@ def transform_shopify_walmart_data(df: pd.DataFrame, channel: str) -> pd.DataFra
     else:
         transformed['order_id'] = df['order_id'].astype(str).str.strip()
 
-    # Map revenue - use line_total (revenue per line item)
-    transformed['revenue'] = pd.to_numeric(df['line_total'], errors='coerce')
+    # Map revenue
+    if channel == 'Shopify':
+        # Shopify: Use order_total_price (total order value)
+        if 'order_total_price' in df.columns:
+            transformed['revenue'] = pd.to_numeric(df['order_total_price'], errors='coerce')
+        else:
+            # Fallback to line_total if order_total_price not available
+            transformed['revenue'] = pd.to_numeric(df['line_total'], errors='coerce')
+    else:
+        # Walmart and other channels: use line_total (revenue per line item)
+        transformed['revenue'] = pd.to_numeric(df['line_total'], errors='coerce')
 
     # Map shipping cost
     if channel == 'Shopify':
