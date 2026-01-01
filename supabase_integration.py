@@ -538,7 +538,17 @@ def fetch_shopify_data() -> pd.DataFrame:
             # User searches by order_number, but backend lookup uses order_id
             merge_key = 'order_id'
 
+            # DEBUG: Show sample data types
+            st.write(f"DEBUG: OrderData {merge_key} dtype: {df_raw[merge_key].dtype if merge_key in df_raw.columns else 'N/A'}")
+            st.write(f"DEBUG: Fees {merge_key} dtype: {df_fees[merge_key].dtype if merge_key in df_fees.columns else 'N/A'}")
+            st.write(f"DEBUG: Sample OrderData {merge_key}: {df_raw[merge_key].head(3).tolist() if merge_key in df_raw.columns else 'N/A'}")
+            st.write(f"DEBUG: Sample Fees {merge_key}: {df_fees[merge_key].head(3).tolist() if merge_key in df_fees.columns else 'N/A'}")
+
             if merge_key in df_raw.columns and merge_key in df_fees.columns:
+                # Ensure both columns are the same data type (string)
+                df_raw[merge_key] = df_raw[merge_key].astype(str)
+                df_fees[merge_key] = df_fees[merge_key].astype(str)
+
                 # Aggregate fee data to ensure one row per order
                 # For Shopify: Sum processing_fee per order (fees might be stored as negative values)
                 agg_dict = {}
@@ -547,15 +557,21 @@ def fetch_shopify_data() -> pd.DataFrame:
                     # Convert to numeric and take absolute value (fees may be stored as negative)
                     df_fees['processing_fee'] = pd.to_numeric(df_fees['processing_fee'], errors='coerce').fillna(0).abs()
                     agg_dict['processing_fee'] = 'sum'
+                    st.write(f"DEBUG: Processing fees found: {len(df_fees)} rows, sample values: {df_fees['processing_fee'].head(3).tolist()}")
 
                 if agg_dict:
                     df_fees_agg = df_fees.groupby(merge_key).agg(agg_dict).reset_index()
+                    st.write(f"DEBUG: Aggregated to {len(df_fees_agg)} unique orders")
+                    st.write(f"DEBUG: Sample aggregated data:\n{df_fees_agg.head(3)}")
                 else:
                     # If no fee columns found, just get unique order IDs
                     df_fees_agg = df_fees[[merge_key]].drop_duplicates()
 
                 # Merge with order data using order_id
                 df_raw = df_raw.merge(df_fees_agg, on=merge_key, how='left', suffixes=('', '_fee'))
+                st.write(f"DEBUG: After merge, processing_fee column exists: {'processing_fee' in df_raw.columns}")
+                if 'processing_fee' in df_raw.columns:
+                    st.write(f"DEBUG: Sample merged processing_fee values: {df_raw['processing_fee'].head(3).tolist()}")
 
         # Transform the data to dashboard format
         df = transform_shopify_walmart_data(df_raw, 'Shopify')
