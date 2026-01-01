@@ -624,9 +624,9 @@ def fetch_walmart_data() -> pd.DataFrame:
 
         # Merge fee data with order data if available
         if df_fees is not None and not df_fees.empty:
-            # Merge on order_id
-            if 'order_id' in df_fees.columns:
-                # Aggregate fee data by order_id and transaction_type
+            # Walmart_Fees uses walmart_po column to join with Walmart_OrderData's order_id
+            if 'walmart_po' in df_fees.columns:
+                # Aggregate fee data by walmart_po and transaction_type
                 # For Walmart we need:
                 # - commission_from_sale where transaction_type = 'SALE' for platform fees
                 # - commission_from_sale where transaction_type = 'ADJMNT' for shipping costs
@@ -637,27 +637,27 @@ def fetch_walmart_data() -> pd.DataFrame:
                 # Get platform fee (SALE transactions)
                 platform_fees = fee_pivot[fee_pivot['transaction_type'].astype(str).str.upper() == 'SALE'].copy()
                 if not platform_fees.empty:
-                    platform_fees = platform_fees.groupby('order_id')['commission_from_sale'].sum().reset_index()
-                    platform_fees.rename(columns={'commission_from_sale': 'processing_fee'}, inplace=True)
+                    platform_fees = platform_fees.groupby('walmart_po')['commission_from_sale'].sum().reset_index()
+                    platform_fees.rename(columns={'walmart_po': 'order_id', 'commission_from_sale': 'processing_fee'}, inplace=True)
 
                 # Get shipping costs (ADJMNT transactions)
                 shipping_fees = fee_pivot[fee_pivot['transaction_type'].astype(str).str.upper() == 'ADJMNT'].copy()
                 if not shipping_fees.empty:
-                    shipping_fees = shipping_fees.groupby('order_id')['commission_from_sale'].sum().reset_index()
-                    shipping_fees.rename(columns={'commission_from_sale': 'walmart_shipping'}, inplace=True)
+                    shipping_fees = shipping_fees.groupby('walmart_po')['commission_from_sale'].sum().reset_index()
+                    shipping_fees.rename(columns={'walmart_po': 'order_id', 'commission_from_sale': 'walmart_shipping'}, inplace=True)
+
+                # Ensure both DataFrames have order_id as string for merge
+                df_raw['order_id'] = df_raw['order_id'].astype(str)
 
                 # Merge platform fees
                 if not platform_fees.empty:
+                    platform_fees['order_id'] = platform_fees['order_id'].astype(str)
                     df_raw = df_raw.merge(platform_fees, on='order_id', how='left')
 
                 # Merge shipping fees
                 if not shipping_fees.empty:
+                    shipping_fees['order_id'] = shipping_fees['order_id'].astype(str)
                     df_raw = df_raw.merge(shipping_fees, on='order_id', how='left')
-
-                # Also keep transaction_type for the transformation function
-                # We'll merge the full fee data but mark which transaction types exist
-                fee_types = fee_pivot.groupby('order_id')['transaction_type'].apply(lambda x: ','.join(x.unique())).reset_index()
-                df_raw = df_raw.merge(fee_types, on='order_id', how='left', suffixes=('', '_fee'))
 
         # Transform the data to dashboard format
         df = transform_shopify_walmart_data(df_raw, 'Walmart')
