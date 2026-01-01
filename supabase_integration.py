@@ -131,7 +131,14 @@ def transform_shopify_walmart_data(df: pd.DataFrame, channel: str) -> pd.DataFra
     # Map shipping cost
     if channel == 'Shopify':
         # Shopify: Calculate based on weight
-        if 'weight' in df.columns:
+        # Check for both 'weight' and 'weight_lbs' column names
+        weight_col = None
+        if 'weight_lbs' in df.columns:
+            weight_col = 'weight_lbs'
+        elif 'weight' in df.columns:
+            weight_col = 'weight'
+
+        if weight_col:
             def calc_shopify_shipping(weight):
                 try:
                     w = float(weight)
@@ -143,7 +150,7 @@ def transform_shopify_walmart_data(df: pd.DataFrame, channel: str) -> pd.DataFra
                         return 19.5
                 except:
                     return 0.0
-            transformed['shipping_cost'] = df['weight'].apply(calc_shopify_shipping)
+            transformed['shipping_cost'] = df[weight_col].apply(calc_shopify_shipping)
         else:
             transformed['shipping_cost'] = pd.to_numeric(df['line_shipping'], errors='coerce').fillna(0)
     elif channel == 'Walmart':
