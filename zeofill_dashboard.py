@@ -777,13 +777,80 @@ def main():
    if not check_password():
        st.stop()  # Stop execution if password is incorrect
 
-   load_css()
-
    # Clear Streamlit cache on first load to ensure fresh data from Supabase
    if 'cache_cleared' not in st.session_state:
        st.cache_data.clear()
        st.session_state.cache_cleared = True
 
+   # Data Processing with professional loading screen
+   # Load data from Supabase if available, otherwise use sample data
+   if 'data_loaded' not in st.session_state:
+       # Show ONLY loading screen - no other UI elements
+       load_css()
+       st.markdown("""
+           <style>
+           .loading-container {
+               position: fixed;
+               top: 0;
+               left: 0;
+               width: 100vw;
+               height: 100vh;
+               display: flex;
+               flex-direction: column;
+               align-items: center;
+               justify-content: center;
+               background: #0E1117;
+               z-index: 9999;
+           }
+           .loading-spinner {
+               border: 4px solid rgba(45, 212, 191, 0.1);
+               border-top: 4px solid #2DD4BF;
+               border-radius: 50%;
+               width: 60px;
+               height: 60px;
+               animation: spin 1s linear infinite;
+               margin-bottom: 20px;
+           }
+           @keyframes spin {
+               0% { transform: rotate(0deg); }
+               100% { transform: rotate(360deg); }
+           }
+           .loading-text {
+               color: #9CA3AF;
+               font-size: 1.2rem;
+               margin-top: 10px;
+           }
+           </style>
+           <div class="loading-container">
+               <div class="loading-spinner"></div>
+               <div class="loading-text">Loading dashboard data...</div>
+           </div>
+       """, unsafe_allow_html=True)
+
+       if SUPABASE_AVAILABLE:
+           df_full = fetch_all_order_data()
+           if df_full is None or df_full.empty:
+               df_full = generate_sample_data()
+       else:
+           df_full = generate_sample_data()
+
+       st.session_state['data_loaded'] = True
+       st.session_state['df_full'] = df_full
+       st.rerun()
+
+   # Once data is loaded, show the dashboard
+   load_css()
+
+   # Use cached data for seamless experience
+   df_full = st.session_state.get('df_full')
+   if df_full is None or df_full.empty:
+       if SUPABASE_AVAILABLE:
+           df_full = fetch_all_order_data()
+           if df_full is None or df_full.empty:
+               df_full = generate_sample_data()
+       else:
+           df_full = generate_sample_data()
+       st.session_state['df_full'] = df_full
 
    # 1. Header: Title (Left) | Logo & Status (Right)
    col_head1, col_head2 = st.columns([2, 1])
@@ -801,76 +868,13 @@ def main():
 
    st.markdown('<div class="title-spacer"></div>', unsafe_allow_html=True)
 
-   # Data Processing with professional loading screen
-   # Load data from Supabase if available, otherwise use sample data
-   if 'data_loaded' not in st.session_state:
-       # Show loading screen on first load
-       with st.spinner(''):
-           st.markdown("""
-               <style>
-               .loading-container {
-                   display: flex;
-                   flex-direction: column;
-                   align-items: center;
-                   justify-content: center;
-                   min-height: 400px;
-                   text-align: center;
-               }
-               .loading-spinner {
-                   border: 4px solid rgba(45, 212, 191, 0.1);
-                   border-top: 4px solid #2DD4BF;
-                   border-radius: 50%;
-                   width: 50px;
-                   height: 50px;
-                   animation: spin 1s linear infinite;
-                   margin-bottom: 20px;
-               }
-               @keyframes spin {
-                   0% { transform: rotate(0deg); }
-                   100% { transform: rotate(360deg); }
-               }
-               .loading-text {
-                   color: #9CA3AF;
-                   font-size: 1.1rem;
-                   margin-top: 10px;
-               }
-               </style>
-               <div class="loading-container">
-                   <div class="loading-spinner"></div>
-                   <div class="loading-text">Loading dashboard data...</div>
-               </div>
-           """, unsafe_allow_html=True)
-
-           if SUPABASE_AVAILABLE:
-               df_full = fetch_all_order_data()
-               if df_full is None or df_full.empty:
-                   st.warning("⚠️ Could not load Supabase data. Using sample data.")
-                   df_full = generate_sample_data()
-           else:
-               df_full = generate_sample_data()
-
-           st.session_state['data_loaded'] = True
-           st.session_state['df_full'] = df_full
-           st.rerun()
-   else:
-       # Use cached data for seamless experience
-       df_full = st.session_state.get('df_full')
-       if df_full is None or df_full.empty:
-           if SUPABASE_AVAILABLE:
-               df_full = fetch_all_order_data()
-               if df_full is None or df_full.empty:
-                   df_full = generate_sample_data()
-           else:
-               df_full = generate_sample_data()
-           st.session_state['df_full'] = df_full
-
    # Store unfiltered data for later use
    df_unfiltered = df_full.copy()
 
    # 2. Filters and Tabs Row - Centered between horizontal lines
    st.markdown('<div style="border-top: 1px solid rgba(255, 255, 255, 0.1); margin: 1.5rem 0 0 0;"></div>', unsafe_allow_html=True)
 
-   filter_col1, filter_col2, filter_col3 = st.columns([6, 2, 2])
+   filter_col1, filter_col2, filter_col3, filter_col4 = st.columns([5, 2, 2, 2])
 
    with filter_col1:
        # Tabs on the left side
@@ -899,6 +903,14 @@ def main():
            placeholder="Channel"
        )
 
+   with filter_col4:
+       order_search = st.text_input(
+           "Search Order",
+           placeholder="Order #...",
+           label_visibility="collapsed",
+           key="order_search"
+       )
+
    st.markdown('<div style="border-bottom: 1px solid rgba(255, 255, 255, 0.1); margin: 0 0 1.5rem 0;"></div>', unsafe_allow_html=True)
 
    # Filter Logic applied to df for the Charts
@@ -923,6 +935,12 @@ def main():
 
    if channels:
        df = df[df['channel'].isin(channels)]
+
+   # Filter by order number if search term is provided
+   if order_search and order_search.strip():
+       search_term = order_search.strip()
+       # Search in order_id column (which contains order numbers for all channels)
+       df = df[df['order_id'].astype(str).str.contains(search_term, case=False, na=False)]
 
    # Recalculate metrics for the filtered view
    metrics_filtered = calculate_metrics(df)
@@ -1057,6 +1075,12 @@ def main():
                    channel_df = df[df['channel'] == channel].copy()
 
                    if not channel_df.empty:
+                       # Round financial columns to 2 decimal places
+                       financial_columns = ['cogs', 'platform_fee', 'shipping_cost', 'gross_profit', 'net_profit', 'revenue', 'discount', 'tax', 'refund']
+                       for col in financial_columns:
+                           if col in channel_df.columns:
+                               channel_df[col] = channel_df[col].round(2)
+
                        # Convert to CSV
                        csv_data = channel_df.to_csv(index=False)
                        export_files[channel] = csv_data
