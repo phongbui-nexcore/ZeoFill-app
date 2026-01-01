@@ -936,33 +936,37 @@ def main():
    st.markdown('<div style="border-bottom: 1px solid rgba(255, 255, 255, 0.1); margin: 0 0 1.5rem 0;"></div>', unsafe_allow_html=True)
 
    # Filter Logic applied to df for the Charts
-   if date_preset == "All":
-       df = df_full.copy()  # Use all data
-   elif date_preset == "Last 7 Days":
-       date_range = (datetime.now() - timedelta(days=7), datetime.now())
-       start, end = pd.Timestamp(date_range[0]), pd.Timestamp(date_range[1])
-       df = df_full[(df_full['date'] >= start) & (df_full['date'] <= end)]
-   elif date_preset == "Last 30 Days":
-       date_range = (datetime.now() - timedelta(days=30), datetime.now())
-       start, end = pd.Timestamp(date_range[0]), pd.Timestamp(date_range[1])
-       df = df_full[(df_full['date'] >= start) & (df_full['date'] <= end)]
-   elif date_preset == "Last 90 Days":
-       date_range = (datetime.now() - timedelta(days=90), datetime.now())
-       start, end = pd.Timestamp(date_range[0]), pd.Timestamp(date_range[1])
-       df = df_full[(df_full['date'] >= start) & (df_full['date'] <= end)]
-   else:  # Custom
-       date_range = (datetime.now() - timedelta(days=30), datetime.now())
-       start, end = pd.Timestamp(date_range[0]), pd.Timestamp(date_range[1])
-       df = df_full[(df_full['date'] >= start) & (df_full['date'] <= end)]
-
-   if channels:
-       df = df[df['channel'].isin(channels)]
-
-   # Filter by order number if search term is provided
+   # IMPORTANT: If searching for a specific order, skip date filtering
    if order_search and order_search.strip():
+       # When searching for an order, use all data (ignore date preset)
+       df = df_full.copy()
        search_term = order_search.strip()
        # Search in order_id column (which contains order numbers for all channels)
        df = df[df['order_id'].astype(str).str.contains(search_term, case=False, na=False)]
+   else:
+       # Normal date filtering when not searching for a specific order
+       if date_preset == "All":
+           df = df_full.copy()  # Use all data
+       elif date_preset == "Last 7 Days":
+           date_range = (datetime.now() - timedelta(days=7), datetime.now())
+           start, end = pd.Timestamp(date_range[0]), pd.Timestamp(date_range[1])
+           df = df_full[(df_full['date'] >= start) & (df_full['date'] <= end)]
+       elif date_preset == "Last 30 Days":
+           date_range = (datetime.now() - timedelta(days=30), datetime.now())
+           start, end = pd.Timestamp(date_range[0]), pd.Timestamp(date_range[1])
+           df = df_full[(df_full['date'] >= start) & (df_full['date'] <= end)]
+       elif date_preset == "Last 90 Days":
+           date_range = (datetime.now() - timedelta(days=90), datetime.now())
+           start, end = pd.Timestamp(date_range[0]), pd.Timestamp(date_range[1])
+           df = df_full[(df_full['date'] >= start) & (df_full['date'] <= end)]
+       else:  # Custom
+           date_range = (datetime.now() - timedelta(days=30), datetime.now())
+           start, end = pd.Timestamp(date_range[0]), pd.Timestamp(date_range[1])
+           df = df_full[(df_full['date'] >= start) & (df_full['date'] <= end)]
+
+   # Apply channel filter
+   if channels:
+       df = df[df['channel'].isin(channels)]
 
    # Recalculate metrics for the filtered view
    metrics_filtered = calculate_metrics(df)
