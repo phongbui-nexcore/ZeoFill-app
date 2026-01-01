@@ -31,6 +31,9 @@ from datetime import datetime
 SHOPIFY_TABLE = "Shopify_OrderData"
 WALMART_TABLE = "Walmart_OrderData"
 AMAZON_TABLE = "Amazon_OrderData"
+SHOPIFY_FEES_TABLE = "Shopify_Fees"
+WALMART_FEES_TABLE = "Walmart_Fees"
+AMAZON_FEES_TABLE = "Amazon_Fees"
 
 def get_supabase_client() -> Optional[Client]:
     """
@@ -125,8 +128,35 @@ def transform_shopify_walmart_data(df: pd.DataFrame, channel: str) -> pd.DataFra
     # Map revenue - use line_total (revenue per line item)
     transformed['revenue'] = pd.to_numeric(df['line_total'], errors='coerce')
 
-    # Map shipping cost - use line_shipping
-    transformed['shipping_cost'] = pd.to_numeric(df['line_shipping'], errors='coerce').fillna(0)
+    # Map shipping cost
+    if channel == 'Shopify':
+        # Shopify: Calculate based on weight
+        if 'weight' in df.columns:
+            def calc_shopify_shipping(weight):
+                try:
+                    w = float(weight)
+                    if w < 1:
+                        return 7.0
+                    elif w <= 5:
+                        return 12.0
+                    else:
+                        return 19.5
+                except:
+                    return 0.0
+            transformed['shipping_cost'] = df['weight'].apply(calc_shopify_shipping)
+        else:
+            transformed['shipping_cost'] = pd.to_numeric(df['line_shipping'], errors='coerce').fillna(0)
+    elif channel == 'Walmart':
+        # Walmart: Use commission_from_sale where transaction_type = ADJMNT from fees table
+        if 'commission_from_sale' in df.columns and 'transaction_type' in df.columns:
+            # Filter for ADJMNT transactions
+            mask = df['transaction_type'].astype(str).str.upper() == 'ADJMNT'
+            transformed['shipping_cost'] = pd.to_numeric(df['commission_from_sale'], errors='coerce').fillna(0)
+            transformed.loc[~mask, 'shipping_cost'] = 0
+        else:
+            transformed['shipping_cost'] = pd.to_numeric(df['line_shipping'], errors='coerce').fillna(0)
+    else:
+        transformed['shipping_cost'] = pd.to_numeric(df['line_shipping'], errors='coerce').fillna(0)
 
     # Map tax - use line_tax
     transformed['tax'] = pd.to_numeric(df['line_tax'], errors='coerce').fillna(0)
@@ -189,17 +219,27 @@ def transform_shopify_walmart_data(df: pd.DataFrame, channel: str) -> pd.DataFra
     # Estimate: 40% of revenue (adjust this percentage as needed)
     transformed['cogs'] = transformed['revenue'] * 0.40
 
-    # Platform fees - use shop_fees if available, otherwise calculate
-    if 'shop_fees' in df.columns and df['shop_fees'].notna().any():
-        transformed['platform_fee'] = pd.to_numeric(df['shop_fees'], errors='coerce').fillna(0)
-    else:
-        # Calculate platform fees based on channel
-        if channel == 'Shopify':
-            # Shopify: 2.9% + $0.30 per transaction + 3% for basic plan
+    # Platform fees - use data from fee tables
+    if channel == 'Shopify':
+        # Shopify: Use processing_fee from Shopify_Fees table
+        if 'processing_fee' in df.columns:
+            transformed['platform_fee'] = pd.to_numeric(df['processing_fee'], errors='coerce').fillna(0)
+        else:
+            # Fallback: 2.9% + $0.30 per transaction + 3% for basic plan
             transformed['platform_fee'] = (transformed['revenue'] * 0.059) + 0.30
-        else:  # Walmart
-            # Walmart: 15% referral fee (average)
+    elif channel == 'Walmart':
+        # Walmart: Use commission_from_sale where transaction_type = SALE from fees table
+        if 'commission_from_sale' in df.columns and 'transaction_type' in df.columns:
+            # Filter for SALE transactions
+            mask = df['transaction_type'].astype(str).str.upper() == 'SALE'
+            transformed['platform_fee'] = pd.to_numeric(df['commission_from_sale'], errors='coerce').fillna(0)
+            transformed.loc[~mask, 'platform_fee'] = 0
+        else:
+            # Fallback: 15% referral fee (average)
             transformed['platform_fee'] = transformed['revenue'] * 0.15
+    else:
+        # Fallback for unknown channels
+        transformed['platform_fee'] = 0
 
     # Discounts - check if discount column exists, otherwise set to 0
     if 'discount' in df.columns:
@@ -273,8 +313,11 @@ def transform_amazon_data(df: pd.DataFrame) -> pd.DataFrame:
     else:
         transformed['revenue'] = 0
 
-    # Map shipping cost - use shipping-price
-    if 'shipping-price' in df.columns:
+    # Map shipping cost - use shipping_label_cost from Amazon_Fees table
+    if 'shipping_label_cost' in df.columns:
+        shipping_label = df['shipping_label_cost'].astype(str).str.replace('$', '').str.replace(',', '').str.strip()
+        transformed['shipping_cost'] = pd.to_numeric(shipping_label, errors='coerce').fillna(0)
+    elif 'shipping-price' in df.columns:
         shipping_price = df['shipping-price'].astype(str).str.replace('$', '').str.replace(',', '').str.strip()
         transformed['shipping_cost'] = pd.to_numeric(shipping_price, errors='coerce').fillna(0)
     else:
@@ -351,8 +394,13 @@ def transform_amazon_data(df: pd.DataFrame) -> pd.DataFrame:
     # Estimate: 40% of revenue (adjust as needed)
     transformed['cogs'] = transformed['revenue'] * 0.40
 
-    # Amazon platform fees - calculate as 15% referral fee + $0.99 per item
-    transformed['platform_fee'] = (transformed['revenue'] * 0.15) + 0.99
+    # Amazon platform fees - use shop_fees from Amazon_Fees table
+    if 'shop_fees' in df.columns:
+        shop_fees_clean = df['shop_fees'].astype(str).str.replace('$', '').str.replace(',', '').str.strip()
+        transformed['platform_fee'] = pd.to_numeric(shop_fees_clean, errors='coerce').fillna(0)
+    else:
+        # Fallback: calculate as 15% referral fee + $0.99 per item
+        transformed['platform_fee'] = (transformed['revenue'] * 0.15) + 0.99
 
     # Apply discounts if available
     total_discount = 0
@@ -400,6 +448,50 @@ def transform_amazon_data(df: pd.DataFrame) -> pd.DataFrame:
     return transformed
 
 
+def fetch_fee_data(table_name: str) -> pd.DataFrame:
+    """
+    Fetch fee data from Supabase fee tables.
+
+    Args:
+        table_name: Name of the fee table (Shopify_Fees, Walmart_Fees, Amazon_Fees)
+
+    Returns:
+        DataFrame containing fee data or None if error
+    """
+    try:
+        client = get_supabase_client()
+
+        if client is None:
+            return None
+
+        # Fetch all rows using pagination
+        all_data = []
+        batch_size = 1000
+        offset = 0
+
+        while True:
+            response = client.table(table_name).select('*').range(offset, offset + batch_size - 1).execute()
+
+            if not response.data:
+                break
+
+            all_data.extend(response.data)
+
+            if len(response.data) < batch_size:
+                break
+
+            offset += batch_size
+
+        if not all_data:
+            return None
+
+        return pd.DataFrame(all_data)
+
+    except Exception as e:
+        st.warning(f"⚠️ Could not fetch {table_name}: {str(e)}")
+        return None
+
+
 @st.cache_data(ttl=300)  # Cache for 5 minutes
 def fetch_shopify_data() -> pd.DataFrame:
     """
@@ -440,6 +532,20 @@ def fetch_shopify_data() -> pd.DataFrame:
 
         # Convert to DataFrame
         df_raw = pd.DataFrame(all_data)
+
+        # Fetch fee data
+        df_fees = fetch_fee_data(SHOPIFY_FEES_TABLE)
+
+        # Merge fee data with order data if available
+        if df_fees is not None and not df_fees.empty:
+            # Merge on order_id (or order_number if available)
+            merge_key = 'order_id'
+            if 'order_number' in df_raw.columns and 'order_number' in df_fees.columns:
+                merge_key = 'order_number'
+            elif 'order_id' in df_fees.columns:
+                merge_key = 'order_id'
+
+            df_raw = df_raw.merge(df_fees, on=merge_key, how='left', suffixes=('', '_fee'))
 
         # Transform the data to dashboard format
         df = transform_shopify_walmart_data(df_raw, 'Shopify')
@@ -492,6 +598,15 @@ def fetch_walmart_data() -> pd.DataFrame:
         # Convert to DataFrame
         df_raw = pd.DataFrame(all_data)
 
+        # Fetch fee data
+        df_fees = fetch_fee_data(WALMART_FEES_TABLE)
+
+        # Merge fee data with order data if available
+        if df_fees is not None and not df_fees.empty:
+            # Merge on order_id
+            if 'order_id' in df_fees.columns:
+                df_raw = df_raw.merge(df_fees, on='order_id', how='left', suffixes=('', '_fee'))
+
         # Transform the data to dashboard format
         df = transform_shopify_walmart_data(df_raw, 'Walmart')
 
@@ -542,6 +657,15 @@ def fetch_amazon_data() -> pd.DataFrame:
 
         # Convert to DataFrame
         df_raw = pd.DataFrame(all_data)
+
+        # Fetch fee data
+        df_fees = fetch_fee_data(AMAZON_FEES_TABLE)
+
+        # Merge fee data with order data if available
+        if df_fees is not None and not df_fees.empty:
+            # Merge on amazon-order-id
+            if 'amazon-order-id' in df_fees.columns:
+                df_raw = df_raw.merge(df_fees, on='amazon-order-id', how='left', suffixes=('', '_fee'))
 
         # Transform the data to dashboard format
         df = transform_amazon_data(df_raw)

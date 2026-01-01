@@ -95,6 +95,11 @@ def check_password():
 
         if "password_correct" in st.session_state and not st.session_state["password_correct"]:
             st.error("😕 Incorrect password. Please try again.")
+            # Add retry button
+            if st.button("🔄 Try Again", use_container_width=True):
+                # Clear the password_correct state to allow retry
+                del st.session_state["password_correct"]
+                st.rerun()
 
         st.markdown('</div>', unsafe_allow_html=True)
 
